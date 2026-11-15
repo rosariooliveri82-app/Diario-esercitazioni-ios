@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#4b5a2a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Diario">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icone/icona-192.png">
+<title>Diario Esercitazioni</title>
+<style>
+:root{--bg:#f4f1e4;--card:#fffdf5;--ink:#2b2e1d;--mute:#6b6f58;--olive:#4b5a2a;--olive2:#6f7f3f;--sand:#e9e2c8;--line:#d8d1b3;--ok:#2f7d32;--warn:#b26a00;--ko:#b3261e}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-text-size-adjust:100%}
+header.top{position:sticky;top:0;z-index:5;background:var(--olive);color:#fff;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;display:flex;align-items:center;gap:10px}
+header.top h1{font-size:18px;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+header.top button{background:transparent;border:0;color:#fff;font-size:22px;padding:2px 8px}
+main{padding:14px;padding-bottom:calc(84px + env(safe-area-inset-bottom));max-width:720px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.card h2{font-size:16px;margin:0 0 8px}
+.mute{color:var(--mute);font-size:13px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row>*{flex:1}
+label{display:block;font-size:13px;color:var(--mute);margin:8px 0 3px}
+input,select,textarea{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+button.b{font:inherit;font-weight:600;border:0;border-radius:12px;padding:12px 14px;background:var(--olive);color:#fff;width:100%}
+button.b.sec{background:var(--sand);color:var(--ink);border:1px solid var(--line)}
+button.b.ko{background:var(--ko)}
+button.b.sm{padding:7px 10px;font-size:14px;width:auto}
+button.big{font-size:19px;padding:18px 10px}
+.tabs{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:6}
+.tabs a{flex:1;text-align:center;padding:9px 2px 8px;color:var(--mute);text-decoration:none;font-size:12px}
+.tabs a b{display:block;font-size:20px}
+.tabs a.on{color:var(--olive);font-weight:700}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0}
+.chip{border:1px solid var(--line);background:#fff;border-radius:20px;padding:8px 13px;font-size:14px}
+.chip.on{background:var(--olive);color:#fff;border-color:var(--olive)}
+.item{display:flex;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line)}
+.item:last-child{border:0}
+.tag{display:inline-block;border-radius:6px;padding:1px 7px;font-size:12px;font-weight:600;background:var(--sand)}
+.tag.g{background:#dfe9c9}.tag.s{background:#f3dfc0}.tag.ok{background:#cfe8cf;color:var(--ok)}.tag.w{background:#f7e3b8;color:var(--warn)}.tag.k{background:#f4d0cc;color:var(--ko)}
+.kpi{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi div{background:var(--sand);border-radius:10px;padding:10px}
+.kpi b{display:block;font-size:20px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border:1px solid var(--line);padding:5px 6px;text-align:left}
+td.n,th.n{text-align:right}
+.live{background:#e4efcf;border:1px solid #b8d08a}
+#stampa{display:none}
+.chk{display:flex;align-items:center;gap:10px;font-size:16px;margin:12px 0 4px}.chk input{width:22px;height:22px;flex:none}
+.copy{text-align:center;font-size:11px;color:#5b5f4a;margin:22px 0 4px;line-height:1.5}
+@media print{
+  body>*:not(#stampa){display:none!important}
+  #stampa{display:block;background:#fff;color:#000;font-family:'Times New Roman',serif}
+  @page{size:A4;margin:14mm}
+}
+#stampa h3,#stampa h4,#stampa p{text-align:center;margin:2px 0}
+#stampa table{font-size:12px}
+#stampa th{background:#eee}
+</style>
+</head>
+<body>
+<header class="top"><button id="indietro" aria-label="Indietro" style="display:none">‹</button><h1 id="titolo">Diario Esercitazioni</h1></header>
+<main><div id="app"></div><footer class="copy">© 2026 Designed &amp; Developed by Rosario OLIVERI Vers. 1.1.0</footer></main>
+<nav class="tabs" id="tabs"></nav>
+<div id="stampa"></div>
+<script src="listino.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
