@@ -24,7 +24,7 @@ const TIPI = { presenza: 'Presenza', guardia: 'Servizio di guardia (CFG)', strao
 function defState() {
   return { v: 1, profilo: { cognome: '', nome: '', grado: '', grado_marcia: '', grado_str: '', ente: 'CENTRO DI ECCELLENZA C-MINI/MICRO APR' },
     imp: { ore_lun_gio: 8, ore_ven: 4, inizio: '08:00', str_fine_lun_gio: '16:30', str_fine_ven: '12:00', ore_cfg: 8, soglia_marcia: 3, rap: 9.15, irpef: 38 },
-    listino: JSON.parse(JSON.stringify(window.LISTINO_INIZIALE)), attivita: [], note: [] };
+    listino: JSON.parse(JSON.stringify(window.LISTINO_INIZIALE)), attivita: [], note: [], prom: null };
 }
 let S;
 function load() { try { const t = localStorage.getItem(KEY); S = t ? Object.assign(defState(), JSON.parse(t)) : defState(); } catch (e) { S = defState(); } }
@@ -127,16 +127,16 @@ window.addEventListener('hashchange', route);
 back.onclick = () => history.length > 1 ? history.back() : nav('#/');
 
 function setTabs(on) {
-  tabs.innerHTML = [['', '📋', 'Attività'], ['note', '📝', 'Note'], ['profilo', '👤', 'Profilo'], ['listino', '💶', 'Listino'], ['dati', '⚙️', 'Dati']]
+  tabs.innerHTML = [['', '📋', 'Attività'], ['note', '📝', 'Note'], ['prom', '🔔', 'Scadenze'], ['profilo', '👤', 'Profilo'], ['listino', '💶', 'Listino'], ['dati', '⚙️', 'Dati']]
     .map(([h, i, t]) => `<a href="#/${h}" class="${on === h ? 'on' : ''}"><b>${i}</b>${t}</a>`).join('');
 }
 function route() {
   clearInterval(tick); const r = R(); window.scrollTo(0, 0);
   const pg = r[0] || '';
   if (pg !== 'listino') ltSbloc = false;
-  setTabs(['note', 'profilo', 'listino', 'dati'].includes(pg) ? pg : '');
-  back.style.display = pg === 'a' || pg === 'nuova' || (pg === 'note' && r[1]) ? '' : 'none';
-  if (pg === 'note') vNote(r[1], r[2]); else if (pg === 'profilo') vProfilo(); else if (pg === 'listino') vListino(); else if (pg === 'dati') vDati();
+  setTabs(['note', 'prom', 'profilo', 'listino', 'dati'].includes(pg) ? pg : '');
+  back.style.display = pg === 'a' || pg === 'nuova' || ((pg === 'note' || pg === 'prom') && r[1]) ? '' : 'none';
+  if (pg === 'prom') vProm(r[1]); else if (pg === 'note') vNote(r[1], r[2]); else if (pg === 'profilo') vProfilo(); else if (pg === 'listino') vListino(); else if (pg === 'dati') vDati();
   else if (pg === 'nuova') vNuova(); else if (pg === 'a' && att(r[1])) vAtt(att(r[1]), r[2] || 'registro', r[3]);
   else vHome();
 }
@@ -145,7 +145,7 @@ function vHome() {
   titolo.textContent = 'Le mie attività';
   const t = totaliPagamenti(S.attivita);
   const ok = S.profilo.grado ? '' : `<div class="card" style="border-color:var(--warn)"><b>Prima configurazione</b><div class="mute">Imposta grado e dati personali nella scheda <a href="#/profilo">Profilo</a>: servono per applicare le tariffe corrette.</div></div>`;
-  app.innerHTML = ok + `<div class="card"><h2>Riepilogo complessivo</h2><div class="kpi">
+  app.innerHTML = ok + bannerScad() + `<div class="card"><h2>Riepilogo complessivo</h2><div class="kpi">
     <div>Pagato<b style="color:var(--ok)">${eur(t.pagato)}</b></div><div>Da pagare<b style="color:var(--warn)">${eur(t.da_pagare)}</b></div>
     <div>In sospeso<b>${eur(t.sospeso)}</b></div><div>Lordo totale<b>${eur(t.lordo)}</b></div></div></div>
     <button class="b" onclick="nav('#/nuova')">+ Nuova attività</button><div style="height:12px"></div>` +
@@ -375,7 +375,7 @@ function statino(at, tipo) {
   const c = calcola(at), pr = S.profilo; const pers = `${esc(pr.grado)} ${esc(pr.cognome)} ${esc(pr.nome)}`.trim() || '(profilo non compilato)';
   const head = `<p><b>${esc(pr.ente)}</b></p><h3>${{ cfi: 'STATINO COMPENSO FORFETTARIO D\'IMPIEGO (CFI)', cfg: 'STATINO COMPENSO FORFETTARIO DI GUARDIA (CFG)', marcia: 'STATINO INDENNITÀ SUPPLEMENTARE DI MARCIA', strao: 'STATINO LAVORO STRAORDINARIO', tutto: 'RIEPILOGO COMPENSI' }[tipo]}</h3>
     <p>Attività: <b>${esc(at.nome)}</b>${at.luogo ? ' – ' + esc(at.luogo) : ''}${at.dal ? ' · dal ' + fd(at.dal) + (at.al ? ' al ' + fd(at.al) : '') : ''}</p><p>Militare: <b>${pers}</b></p><br>`;
-  const foot = `<br><p style="text-align:right;margin-right:30px">Firma dell'interessato ______________________</p><p style="font-size:11px">Prospetto compilato dal partecipante con il Diario Esercitazioni; gli importi sono stime al lordo/netto con le tariffe di listino.</p><p style="font-size:10px;text-align:center">© 2026 Designed &amp; Developed by Rosario OLIVERI Vers. 1.1.1</p>`;
+  const foot = `<br><p style="text-align:right;margin-right:30px">Firma dell'interessato ______________________</p><p style="font-size:11px">Prospetto compilato dal partecipante con il Diario Esercitazioni; gli importi sono stime al lordo/netto con le tariffe di listino.</p><p style="font-size:10px;text-align:center">© 2026 Designed &amp; Developed by Rosario OLIVERI Vers. 1.2.0</p>`;
   const tb = (th, rows, tot) => `<table><tr>${th.map((x, i) => `<th class="${i ? 'n' : ''}">${x}</th>`).join('')}</tr>${rows.map(r => `<tr>${r.map((x, i) => `<td class="${i ? 'n' : ''}">${x}</td>`).join('')}</tr>`).join('')}${tot ? `<tr>${tot.map((x, i) => `<td class="${i ? 'n' : ''}"><b>${x}</b></td>`).join('')}</tr>` : ''}</table>`;
   const dd = k => `${GG[P(k + 'T00:00').getDay()]} ${fd(k)}`;
   let body = '';
@@ -387,6 +387,103 @@ function statino(at, tipo) {
   return head + body + foot;
 }
 
+
+
+/* ----- scadenze e promemoria (con notifiche anche ad app chiusa nell'APK) ----- */
+const FISSI = [['idoneita', 'Idoneità al servizio militare', 'Italia ed estero, incondizionato'], ['analisi', 'Analisi cliniche', ''], ['ecg', 'Elettrocardiogramma / ECG', '']];
+function PR() {
+  if (!S.prom) S.prom = {};
+  const p = S.prom; p.ora = p.ora || '09:00'; p.fissi = p.fissi || {}; p.liberi = p.liberi || [];
+  for (const [k] of FISSI) p.fissi[k] = Object.assign({ pres: '', scad: '', avv: 30 }, p.fissi[k]); return p;
+}
+const TG = { ko: 'k', ok: 'ok', w: 'w', k: '' };
+const oggi0 = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
+const giorniA = k => k ? Math.round((P(k + 'T00:00') - oggi0()) / 86400000) : null;
+function statoScad(scad, avv) {
+  const g = giorniA(scad); if (g === null) return { t: 'Non impostata', c: 'k', g };
+  if (g < 0) return { t: 'Scaduta da ' + (-g) + ' g', c: 'ko', g }; if (g === 0) return { t: 'Scade oggi', c: 'ko', g };
+  if (g <= (+avv || 0)) return { t: 'Scade tra ' + g + ' g', c: 'w', g }; return { t: 'Valida · ' + g + ' g', c: 'ok', g };
+}
+function elencoScad() {
+  const p = PR(); const out = [];
+  for (const [k, t] of FISSI) { const f = p.fissi[k]; if (f.scad) out.push({ nome: t, scad: f.scad, avv: f.avv, link: '#/prom' }); }
+  for (const l of p.liberi) if (l.stato !== 'completato' && l.scad) out.push({ nome: l.titolo || 'Promemoria', scad: l.scad, avv: l.avv, link: '#/prom/' + l.id });
+  return out;
+}
+function bannerScad() {
+  const v = elencoScad().map(x => ({ ...x, s: statoScad(x.scad, x.avv) })).filter(x => x.s.g !== null && x.s.g <= (+x.avv || 0)).sort((x, y) => x.s.g - y.s.g);
+  if (!v.length) return '';
+  return `<div class="card" style="border-color:var(--warn)"><b>🔔 Scadenze</b>${v.slice(0, 4).map(x => `<div class="item" onclick="nav('${x.link}')"><div>${esc(x.nome)}<div class="mute">${fd(x.scad)}</div></div><span class="tag ${TG[x.s.c]}">${x.s.t}</span></div>`).join('')}${v.length > 4 ? `<div class="mute">…e altre ${v.length - 4}</div>` : ''}</div>`;
+}
+const nativo = () => !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications);
+async function riprogramma() {
+  if (!nativo()) return; const LN = window.Capacitor.Plugins.LocalNotifications;
+  try {
+    const perm = await LN.checkPermissions(); if (perm.display !== 'granted') return;
+    const pend = await LN.getPending(); if (pend.notifications && pend.notifications.length) await LN.cancel({ notifications: pend.notifications.map(n => ({ id: n.id })) });
+    const p = PR(); const [hh, mm] = (p.ora || '09:00').split(':').map(Number); const now = new Date(); const nn = []; let id = 1;
+    const at = (k, off) => { const d = P(k + 'T00:00'); d.setDate(d.getDate() - off); d.setHours(hh, mm || 0, 0, 0); return d; };
+    const add = (d, title, body) => { if (d > now && id < 1000) nn.push({ id: id++, title, body, schedule: { at: d, allowWhileIdle: true } }); };
+    const voci = [...FISSI.map(([k, t]) => ({ ...p.fissi[k], nome: t })), ...p.liberi.filter(l => l.stato !== 'completato').map(l => ({ pres: l.pres, scad: l.scad, avv: l.avv, nome: l.titolo || 'Promemoria' }))];
+    for (const v of voci) {
+      if (v.pres) add(at(v.pres, 0), v.nome, 'Oggi: presentazione a visita / data di presentazione.');
+      if (v.scad) { if (+v.avv > 0) add(at(v.scad, +v.avv), v.nome, `Scade tra ${v.avv} giorni (${fd(v.scad)}).`); add(at(v.scad, 1), v.nome, `Scade domani (${fd(v.scad)}).`); add(at(v.scad, 0), v.nome, `Scade oggi (${fd(v.scad)}).`); }
+    }
+    if (nn.length) await LN.schedule({ notifications: nn });
+  } catch (x) { console.log('notifiche', x); }
+}
+async function attivaNotifiche() {
+  if (!nativo()) { alert('Le notifiche ad app chiusa funzionano nell\'app Android (APK). Qui vedrai gli avvisi aprendo l\'app.'); return; }
+  const LN = window.Capacitor.Plugins.LocalNotifications; const r = await LN.requestPermissions();
+  if (r.display !== 'granted') { alert('Permesso notifiche negato. Abilitalo da Impostazioni del telefono → App → Diario Esercitazioni → Notifiche.'); return; }
+  await riprogramma(); alert('Notifiche attivate.');
+}
+async function provaNotifica() {
+  if (!nativo()) { alert('Prova disponibile solo nell\'app Android.'); return; }
+  const LN = window.Capacitor.Plugins.LocalNotifications; const r = await LN.requestPermissions(); if (r.display !== 'granted') { alert('Permesso notifiche negato.'); return; }
+  await LN.schedule({ notifications: [{ id: 9999, title: 'Diario Esercitazioni', body: 'Notifica di prova: gli avvisi funzionano.', schedule: { at: new Date(Date.now() + 8000), allowWhileIdle: true } }] }); alert('Notifica di prova tra 8 secondi: puoi anche chiudere l\'app.');
+}
+function vProm(id) {
+  if (id) return vPromEd(id);
+  titolo.textContent = 'Scadenze e promemoria'; const p = PR(); const nat = nativo();
+  let h = `<div class="card"><b>🔔 Avvisi</b><div class="mute">${nat ? 'Gli avvisi arrivano come notifiche anche ad app chiusa: nel giorno di presentazione, all\'anticipo scelto, il giorno prima e il giorno della scadenza.' : 'Le notifiche ad app chiusa sono nell\'app Android. In questa versione gli avvisi compaiono in Home e qui quando apri l\'app.'}</div>
+    <div class="row" style="margin-top:6px"><div><label>Ora dell'avviso</label><input type="time" id="p-ora" value="${p.ora}"></div></div>
+    <div class="row" style="margin-top:8px"><button class="b sm" id="p-att">Attiva notifiche</button><button class="b sec sm" id="p-prova">Prova</button></div></div>
+    <h2 style="margin:14px 2px 6px">Documenti sanitari</h2>`;
+  for (const [k, t, sub] of FISSI) {
+    const f = p.fissi[k]; const s = statoScad(f.scad, f.avv);
+    h += `<div class="card"><div class="row" style="flex-wrap:nowrap"><div><b>${t}</b>${sub ? `<div class="mute">${sub}</div>` : ''}</div><span class="tag ${TG[s.c]}" style="flex:none">${s.t}</span></div>
+    <div class="row"><div><label>Presentazione a visita</label><input type="date" data-k="${k}" data-f="pres" value="${f.pres}"></div><div><label>Scadenza</label><input type="date" data-k="${k}" data-f="scad" value="${f.scad}"></div></div>
+    <label>Avvisami giorni prima</label><input inputmode="numeric" data-k="${k}" data-f="avv" value="${f.avv}" style="width:90px"></div>`;
+  }
+  const flt = vProm.f || 'attivo'; const lib = p.liberi.filter(l => flt === 'tutti' || l.stato === flt).sort((x, y) => (x.scad || '9999').localeCompare(y.scad || '9999'));
+  h += `<h2 style="margin:14px 2px 6px">Promemoria liberi</h2><button class="b" onclick="nav('#/prom/nuovo')">+ Nuovo promemoria</button><div style="height:8px"></div>${chipsHtml([['attivo', 'Attivi'], ['completato', 'Completati'], ['tutti', 'Tutti']], flt, 'pf')}`;
+  h += lib.length ? lib.map(l => { const s = l.stato === 'completato' ? { t: 'Completato', c: 'ok' } : statoScad(l.scad, l.avv); return `<a href="#/prom/${l.id}" style="text-decoration:none;color:inherit"><div class="card"><div class="row" style="flex-wrap:nowrap"><div><b>${esc(l.titolo || 'Senza titolo')}</b><div class="mute">${l.pres ? 'Presentazione ' + fd(l.pres) + ' · ' : ''}${l.scad ? 'Scadenza ' + fd(l.scad) : 'senza scadenza'}</div>${l.note ? `<div class="mute" style="overflow:hidden;max-height:2.6em">${esc(l.note)}</div>` : ''}</div><span class="tag ${TG[s.c]}" style="flex:none">${s.t}</span></div></div></a>`; }).join('') : '<p class="mute">Nessun promemoria in questo elenco.</p>';
+  app.innerHTML = h;
+  app.querySelectorAll('[data-pf]').forEach(b => b.onclick = () => { vProm.f = b.dataset.pf; vProm(); });
+  app.querySelectorAll('input[data-k]').forEach(i => i.onchange = () => { p.fissi[i.dataset.k][i.dataset.f] = i.dataset.f === 'avv' ? Math.max(0, parseInt(i.value, 10) || 0) : i.value; save(); riprogramma(); vProm(); });
+  $('#p-ora').onchange = e => { p.ora = e.target.value || '09:00'; save(); riprogramma(); };
+  $('#p-att').onclick = attivaNotifiche; $('#p-prova').onclick = provaNotifica;
+}
+function vPromEd(id) {
+  titolo.textContent = 'Promemoria'; const p = PR();
+  let l = id === 'nuovo' ? { id: uid(), titolo: '', pres: dkey(new Date()), scad: '', note: '', stato: 'attivo', avv: 7, _n: 1 } : p.liberi.find(x => x.id === id);
+  if (!l) { nav('#/prom'); return; }
+  app.innerHTML = `<div class="card"><label>Titolo</label><input id="e-t" value="${esc(l.titolo)}" placeholder="es. Rinnovo patente militare">
+    <div class="row"><div><label>Data di presentazione</label><input type="date" id="e-p" value="${l.pres || ''}"></div><div><label>Data di scadenza</label><input type="date" id="e-s" value="${l.scad || ''}"></div></div>
+    <label>Avvisami giorni prima della scadenza</label><input inputmode="numeric" id="e-a" value="${l.avv}" style="width:90px">
+    <label>Note</label><textarea id="e-n" rows="5" style="width:100%;font:inherit;padding:10px;border:1px solid var(--line,#cfc9a6);border-radius:10px;background:#fffef8">${esc(l.note)}</textarea>
+    <label>Stato</label>${chipsHtml([['attivo', 'Attivo'], ['completato', 'Completato']], l.stato, 'st')}</div>
+    <div class="row"><button class="b" id="e-ok">Salva</button>${l._n ? '' : '<button class="b ko" id="e-del">Elimina</button>'}</div>`;
+  app.querySelectorAll('[data-st]').forEach(b => b.onclick = () => { l.stato = b.dataset.st; app.querySelectorAll('[data-st]').forEach(x => x.classList.toggle('on', x === b)); });
+  $('#e-ok').onclick = () => {
+    const t = $('#e-t').value.trim(); if (!t) { alert('Inserisci il titolo.'); return; }
+    const pr = $('#e-p').value, sc = $('#e-s').value; if (pr && sc && sc < pr) { alert('La scadenza non può essere prima della presentazione.'); return; }
+    Object.assign(l, { titolo: t, pres: pr, scad: sc, avv: Math.max(0, parseInt($('#e-a').value, 10) || 0), note: $('#e-n').value.trim() }); delete l._n;
+    if (!p.liberi.includes(l)) p.liberi.push(l); save(); riprogramma(); history.length > 1 ? history.back() : nav('#/prom');
+  };
+  const d = $('#e-del'); if (d) d.onclick = () => { if (confirm('Eliminare questo promemoria?')) { p.liberi = p.liberi.filter(x => x !== l); save(); riprogramma(); history.length > 1 ? history.back() : nav('#/prom'); } };
+}
 
 /* ----- note (block notes) ----- */
 let nq = '';
@@ -523,5 +620,5 @@ function vDati() {
   $('#rz').onclick = () => { if (confirm('Cancellare tutte le attività e il profilo?') && confirm('Sei sicuro? L\'operazione non si può annullare.')) { S = defState(); save(); nav('#/'); } };
 }
 
-load(); route();
+load(); route(); setTimeout(riprogramma, 1500);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
