@@ -286,19 +286,96 @@ function rPagamenti(at, box) {
 /* ----- statini ----- */
 function rStatini(at, box, tipo) {
   if (!tipo) {
-    box.innerHTML = `<div class="card"><h2>Statini da stampare</h2><div class="mute">Scegli lo statino: potrai stamparlo o salvarlo in PDF dal telefono.</div><div style="height:8px"></div>
+    box.innerHTML = `<div class="card"><h2>Statini da stampare</h2><div class="mute">Scegli lo statino: potrai salvarlo in PDF e condividerlo o stamparlo dal telefono.</div><div style="height:8px"></div>
     ${[['cfi', 'Statino CFI'], ['cfg', 'Statino CFG'], ['marcia', 'Statino indennità di marcia'], ['strao', 'Statino lavoro straordinario'], ['tutto', 'Riepilogo compensi e pagamenti']].map(([k, t]) => `<button class="b sec" style="margin-bottom:8px" data-st="${k}">${t}</button>`).join('')}</div>`;
     box.querySelectorAll('[data-st]').forEach(b => b.onclick = () => nav(`#/a/${at.id}/statini/${b.dataset.st}`)); return;
   }
   const html = statino(at, tipo);
-  box.innerHTML = `<button class="b" id="stampa-btn">🖨 Stampa / Salva PDF</button><div style="height:10px"></div><div class="card" style="background:#fff">${html}</div>`;
-  $('#stampa-btn').onclick = () => { $('#stampa').innerHTML = html; setTimeout(() => window.print(), 50); };
+  const nat = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  box.innerHTML = `<button class="b" id="pdf-btn">📄 Salva / condividi PDF</button>${nat ? '' : '<div style="height:8px"></div><button class="b sec" id="stampa-btn">🖨 Stampa</button>'}<div style="height:10px"></div><div class="card" style="background:#fff">${html}</div>`;
+  const nome = ('statino_' + tipo + '_' + at.nome).replace(/[^A-Za-z0-9]+/g, '_').replace(/_+$/, '') + '.pdf';
+  $('#pdf-btn').onclick = () => condividiPdf(html, nome);
+  const sb = $('#stampa-btn'); if (sb) sb.onclick = () => { $('#stampa').innerHTML = html; setTimeout(() => window.print(), 50); };
 }
+/* ----- PDF generato dall'app (senza librerie): funziona anche nell'APK, dove window.print() non esiste ----- */
+const HW = { ' ': 278, '!': 278, '"': 355, '#': 556, '$': 556, '%': 889, '&': 667, "'": 191, '(': 333, ')': 333, '*': 389, '+': 584, ',': 278, '-': 333, '.': 278, '/': 278, ':': 278, ';': 278, '<': 584, '=': 584, '>': 584, '?': 556, '@': 1015, A: 667, B: 667, C: 722, D: 722, E: 667, F: 611, G: 778, H: 722, I: 278, J: 500, K: 667, L: 556, M: 833, N: 722, O: 778, P: 667, Q: 778, R: 722, S: 667, T: 611, U: 722, V: 667, W: 944, X: 667, Y: 667, Z: 611, '[': 278, '\\': 278, ']': 278, _: 556, a: 556, b: 556, c: 500, d: 556, e: 556, f: 278, g: 556, h: 556, i: 222, j: 222, k: 500, l: 222, m: 833, n: 556, o: 556, p: 556, q: 556, r: 333, s: 500, t: 278, u: 556, v: 500, w: 722, x: 500, y: 500, z: 500, '|': 260 };
+const HB = { A: 722, B: 722, C: 722, D: 722, E: 667, F: 611, G: 778, H: 722, I: 278, J: 556, K: 722, L: 611, M: 833, N: 722, O: 778, P: 667, Q: 778, R: 722, S: 667, T: 611, U: 722, V: 667, W: 944, X: 667, Y: 667, Z: 611, a: 556, b: 611, c: 556, d: 611, e: 556, f: 333, g: 611, h: 611, i: 278, j: 278, k: 556, l: 278, m: 889, n: 611, o: 611, p: 611, q: 611, r: 389, s: 556, t: 333, u: 611, v: 556, w: 778, x: 556, y: 556, z: 500, ' ': 278, ',': 278, '.': 278, ':': 333, ';': 333, '-': 333, '/': 278, '(': 333, ')': 333, '%': 889, '|': 280 };
+const WIN = { '€': 0x80, '–': 0x96, '—': 0x97, '‘': 0x91, '’': 0x92, '“': 0x93, '”': 0x94, '•': 0x95, '…': 0x85 };
+function pdfTxt(s) { let o = ''; for (const ch of String(s).replace(/ /g, ' ').replace(/→/g, '->')) { const c = ch.charCodeAt(0); if (WIN[ch]) o += String.fromCharCode(WIN[ch]); else if (c < 32) o += ' '; else if (c <= 255 && !(c >= 128 && c < 160)) o += ch; else o += '?'; } return o; }
+function pdfW(s, bold, size) { const T = bold ? HB : HW; let w = 0; for (const ch of s) { let x = T[ch] ?? HW[ch]; if (x == null) { const b = ch.normalize('NFD')[0]; x = T[b] ?? HW[b] ?? 556; } w += x; } return w * size / 1000; }
+const pdfEsc = s => s.replace(/[\\()]/g, m => '\\' + m);
+function runsOf(node, bold0) { const out = []; (function w(n, b) { n.childNodes.forEach(c => { if (c.nodeType === 3) out.push({ t: c.textContent.replace(/\s+/g, ' '), b }); else if (c.nodeName === 'BR') out.push({ t: '\n', b }); else w(c, b || /^(B|STRONG|TH|H3)$/.test(c.nodeName)); }); })(node, !!bold0); return out; }
+function wrapRuns(runs, size, maxW) {
+  const lines = []; let cur = [], w = 0;
+  const push = () => { if (cur.length) { const l = cur[cur.length - 1]; l.t = l.t.replace(/\s+$/, ''); } lines.push(cur); cur = []; w = 0; };
+  for (const r of runs) {
+    if (r.t === '\n') { push(); continue; }
+    for (const tok of r.t.split(/(?<= )/)) { if (!tok) continue; const tw = pdfW(tok, r.b, size); if (w + pdfW(tok.trimEnd(), r.b, size) > maxW && cur.length) push(); if (!cur.length) { cur.push({ t: tok.trimStart(), b: r.b }); w = pdfW(tok.trimStart(), r.b, size); } else { cur.push({ t: tok, b: r.b }); w += tw; } }
+  }
+  if (cur.length || !lines.length) push(); return lines;
+}
+function htmlToPdf(html) {
+  const PW = 595.28, PH = 841.89, M = 42, CW = PW - 2 * M; const pages = []; let ops, y;
+  const np = () => { ops = []; pages.push(ops); y = PH - M; }; np();
+  const f = n => (Math.round(n * 100) / 100).toString();
+  const text = (x, yy, s, b, size) => ops.push(`BT /F${b ? 2 : 1} ${f(size)} Tf ${f(x)} ${f(yy)} Td (${pdfEsc(pdfTxt(s))}) Tj ET`);
+  const lineW = ln => ln.reduce((s, r) => s + 0, 0);
+  const drawLines = (lines, x, w, size, align, lh) => { for (const ln of lines) { const tw = ln.reduce((s, r) => s + pdfW(r.t, r.b, size), 0); let xx = align === 'right' ? x + w - tw : align === 'center' ? x + (w - tw) / 2 : x; for (const r of ln) { if (r.t) text(xx, y - size, r.t, r.b, size); xx += pdfW(r.t, r.b, size); } y -= lh; } };
+  const box = document.createElement('div'); box.innerHTML = html;
+  for (const el of box.children) {
+    const tag = el.nodeName; const st = el.getAttribute('style') || '';
+    if (tag === 'BR') { y -= 8; continue; }
+    if (tag === 'P' || tag === 'H3') {
+      const fs = /font-size:\s*(\d+)px/.exec(st); const size = tag === 'H3' ? 12.5 : fs ? +fs[1] * 0.75 : 10;
+      const al = tag === 'H3' || el === box.children[0] || /text-align:\s*center/.test(st) || el.parentNode === box && /text-align:center/.test(st) ? 'center' : /text-align:\s*right/.test(st) ? 'right' : 'left';
+      const lines = wrapRuns(runsOf(el, tag === 'H3'), size, CW), lh = size * 1.3;
+      if (y - lines.length * lh < M) np(); drawLines(lines, M, CW, size, al, lh); y -= 3; continue;
+    }
+    if (tag === 'TABLE') {
+      const rows = [...el.querySelectorAll('tr')].map(tr => [...tr.children].map(c => ({ runs: runsOf(c, c.nodeName === 'TH'), n: c.classList.contains('n'), th: c.nodeName === 'TH' })));
+      const nc = Math.max(...rows.map(r => r.length)), size = 9;
+      const nat = Array(nc).fill(30); rows.forEach(r => r.forEach((c, i) => { const t = c.runs.map(x => x.t).join(''); nat[i] = Math.max(nat[i], pdfW(t, true, size) + 10); }));
+      let tot = nat.reduce((s, x) => s + x, 0); let cw = nat.slice();
+      if (tot > CW) { const k = CW / tot; cw = nat.map(x => Math.max(34, x * k)); const t2 = cw.reduce((s, x) => s + x, 0); cw = cw.map(x => x * CW / t2); } else { const extra = (CW - tot) / nc; cw = nat.map(x => x + extra); }
+      for (const r of rows) {
+        const cells = r.map((c, i) => ({ lines: wrapRuns(c.runs, size, cw[i] - 8), c })); const rh = Math.max(...cells.map(c => c.lines.length)) * size * 1.25 + 7;
+        if (y - rh < M) np();
+        let x = M; const top = y;
+        if (r[0] && r[0].th) ops.push(`0.92 0.92 0.88 rg ${f(x)} ${f(y - rh)} ${f(CW)} ${f(rh)} re f 0 g`);
+        cells.forEach((c, i) => { const yy = y; y = top - 3.5; drawLines(c.lines, x + 4, cw[i] - 8, size, c.c.n ? 'right' : 'left', size * 1.25); y = yy; x += cw[i]; });
+        ops.push(`0.6 G 0.5 w ${f(M)} ${f(top - rh)} m ${f(M + CW)} ${f(top - rh)} l S 0 G`); y = top - rh;
+      }
+      y -= 6; continue;
+    }
+  }
+  /* assemblaggio PDF */
+  const objs = []; const add = s => { objs.push(s); return objs.length; };
+  add('<< /Type /Catalog /Pages 2 0 R >>'); add(''); add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'); add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+  const kids = [];
+  for (const p of pages) { const cs = p.join('\n'); const c = add(`<< /Length ${cs.length} >>\nstream\n${cs}\nendstream`); const pg = add(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PW} ${PH}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${c} 0 R >>`); kids.push(pg + ' 0 R'); }
+  objs[1] = `<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${kids.length} >>`;
+  let out = '%PDF-1.4\n'; const off = []; objs.forEach((o, i) => { off.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+  const xr = out.length; out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + off.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('') + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xr}\n%%EOF`;
+  return out; /* stringa binaria (caratteri 0-255) */
+}
+async function condividiPdf(html, nome) {
+  const bin = htmlToPdf(html); const C = window.Capacitor, pl = C && C.Plugins;
+  try {
+    if (C && C.isNativePlatform && C.isNativePlatform() && pl && pl.Filesystem && pl.Share) {
+      const r = await pl.Filesystem.writeFile({ path: nome, data: btoa(bin), directory: 'CACHE' });
+      await pl.Share.share({ title: nome, dialogTitle: 'Salva o invia lo statino', url: r.uri }); return;
+    }
+  } catch (x) { if (x && /cancel|dismiss/i.test(String(x.message || x))) return; alert('Impossibile creare il PDF: ' + (x.message || x)); return; }
+  const u8 = Uint8Array.from(bin, ch => ch.charCodeAt(0)); const file = new File([u8], nome, { type: 'application/pdf' });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: nome }); return; } } catch (x) { if (x && x.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = nome; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+
 function statino(at, tipo) {
   const c = calcola(at), pr = S.profilo; const pers = `${esc(pr.grado)} ${esc(pr.cognome)} ${esc(pr.nome)}`.trim() || '(profilo non compilato)';
   const head = `<p><b>${esc(pr.ente)}</b></p><h3>${{ cfi: 'STATINO COMPENSO FORFETTARIO D\'IMPIEGO (CFI)', cfg: 'STATINO COMPENSO FORFETTARIO DI GUARDIA (CFG)', marcia: 'STATINO INDENNITÀ SUPPLEMENTARE DI MARCIA', strao: 'STATINO LAVORO STRAORDINARIO', tutto: 'RIEPILOGO COMPENSI' }[tipo]}</h3>
     <p>Attività: <b>${esc(at.nome)}</b>${at.luogo ? ' – ' + esc(at.luogo) : ''}${at.dal ? ' · dal ' + fd(at.dal) + (at.al ? ' al ' + fd(at.al) : '') : ''}</p><p>Militare: <b>${pers}</b></p><br>`;
-  const foot = `<br><p style="text-align:right;margin-right:30px">Firma dell'interessato ______________________</p><p style="font-size:11px">Prospetto compilato dal partecipante con il Diario Esercitazioni; gli importi sono stime al lordo/netto con le tariffe di listino.</p><p style="font-size:10px;text-align:center">© 2026 Designed &amp; Developed by Rosario OLIVERI Vers. 1.1.0</p>`;
+  const foot = `<br><p style="text-align:right;margin-right:30px">Firma dell'interessato ______________________</p><p style="font-size:11px">Prospetto compilato dal partecipante con il Diario Esercitazioni; gli importi sono stime al lordo/netto con le tariffe di listino.</p><p style="font-size:10px;text-align:center">© 2026 Designed &amp; Developed by Rosario OLIVERI Vers. 1.1.1</p>`;
   const tb = (th, rows, tot) => `<table><tr>${th.map((x, i) => `<th class="${i ? 'n' : ''}">${x}</th>`).join('')}</tr>${rows.map(r => `<tr>${r.map((x, i) => `<td class="${i ? 'n' : ''}">${x}</td>`).join('')}</tr>`).join('')}${tot ? `<tr>${tot.map((x, i) => `<td class="${i ? 'n' : ''}"><b>${x}</b></td>`).join('')}</tr>` : ''}</table>`;
   const dd = k => `${GG[P(k + 'T00:00').getDay()]} ${fd(k)}`;
   let body = '';
