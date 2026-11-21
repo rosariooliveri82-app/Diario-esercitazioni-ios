@@ -631,7 +631,7 @@ function applicaBlocchi(a) {
   let n = 0;
   const kk = s => s.slice(0, 4) + '-' + s.slice(4, 6) + '-' + s.slice(6, 8) + 'T' + s.slice(8, 10) + ':' + s.slice(10, 12);
   Object.keys(bl.parti).sort((x, y) => x - y).forEach(i => bl.parti[i].forEach(r => {
-    const [t, ini, fin, m] = r.split('|'); const v = { id: 'i' + a + '-' + ini, tipo: t === 'g' ? 'guardia' : 'presenza', ini: kk(ini), fin: kk(fin), str_tipo: '', smont: 0, note: 'Importato dalla postazione', marcia: m === '1', imp: 1 };
+    const [t, ini, fin, m] = r.split('|'); const v = { id: 'i' + a + '-' + ini, tipo: t === 'g' ? 'guardia' : 'presenza', ini: kk(ini), fin: kk(fin), str_tipo: '', smont: 0, note: 'Importato dalla postazione', marcia: false, imp: 1 };
     if (!at.voci.some(x => x.ini === v.ini)) { at.voci.push(v); n++; }
   }));
   const u = h.u || []; if (u[1] && !S.profilo.cognome) S.profilo.cognome = u[1]; if (u[2] && !S.profilo.nome) S.profilo.nome = u[2];
@@ -648,12 +648,14 @@ function importaTesto(t) {
 }
 let camStop = null;
 function vImporta() {
+  const nativa = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   titolo.textContent = 'Importa dalla postazione'; IMP.fatti = [];
   app.innerHTML = `<div class="card"><h2>Importa i tuoi dati dalla postazione</h2>
     <div class="mute">Alla postazione dell'ufficio, dopo aver passato la CMD o il codice fiscale, premi «Porta i miei dati sul Diario (QR)». Poi inquadra qui il QR: si importano le attività e le presenze registrate fino a oggi. Puoi ripetere l'importazione quando vuoi: i dati già importati vengono aggiornati, quelli scritti da te restano.</div>
     <div style="height:10px"></div><div id="cam-box" style="display:none"><video id="cam" playsinline muted style="width:100%;border-radius:12px;background:#000;max-height:50vh"></video></div>
     <button class="b" id="cam-go">📷 Inquadra il QR con la fotocamera</button><div style="height:8px"></div>
-    <label class="b" style="display:block;text-align:center;background:var(--sand);color:var(--ink)">🖼️ Scatta o scegli una foto del QR<input type="file" id="cam-foto" accept="image/*" capture="environment" style="display:none"></label>
+    <button class="b" id="cam-fotob">📷 Scatta una foto del QR</button><input type="file" id="cam-foto" accept="image/*" capture="environment" style="display:none"><div style="height:8px"></div>
+    <button class="b" id="cam-gal" style="background:var(--sand);color:var(--ink)">🖼️ Scegli una foto dalla galleria</button><input type="file" id="cam-foto2" accept="image/*" style="display:none">
     <div style="height:8px"></div><button class="b" id="cam-txt" style="background:var(--sand);color:var(--ink)">📋 Incolla il testo del QR</button>
     <div id="cam-es" style="margin-top:12px"></div></div>
     <div id="cam-ris"></div>`;
@@ -662,18 +664,20 @@ function vImporta() {
   const risultati = () => { $('#cam-ris').innerHTML = `<div class="card"><h2>Attività importate</h2>` + IMP.fatti.map(f => `<div class="row" style="flex-wrap:nowrap;margin-bottom:6px"><div><b>${esc(f.nome)}</b><div class="mute">${f.n} registrazioni ${f.nuova ? '(attività creata)' : '(aggiornata)'}</div></div><a href="#/a/${f.id}" style="flex:none">Apri</a></div>`).join('') + `</div>`; };
   const fermaCam = () => { if (camStop) { camStop(); camStop = null; } const cb = $('#cam-box'); if (cb) cb.style.display = 'none'; };
   window.addEventListener('hashchange', fermaCam, { once: true });
-  $('#cam-go').onclick = async () => {
+  $('#cam-fotob').onclick = () => $('#cam-foto').click();
+  $('#cam-gal').onclick = () => $('#cam-foto2').click();
+  if ($('#cam-go')) $('#cam-go').onclick = async () => {
     if (camStop) { fermaCam(); return; }
-    if (!window.ZXing || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { es.innerHTML = '<span style="color:var(--ko)">La fotocamera non è disponibile qui: usa «Scatta o scegli una foto del QR».</span>'; return; }
+    if (!window.ZXing || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { es.innerHTML = '<span style="color:var(--ko)">La fotocamera non è disponibile qui: usa «Scatta una foto del QR».</span>'; return; }
     try {
       $('#cam-box').style.display = 'block';
       const rd = new ZXing.BrowserQRCodeReader(); let ultimo = '';
       const ctl = await rd.decodeFromVideoDevice(undefined, 'cam', (res) => { if (!res) return; const t = res.getText(); if (t === ultimo) return; ultimo = t; mostra(importaTesto(t)); });
       camStop = () => { try { ctl.stop(); } catch (e) {} };
       es.innerHTML = '<span class="mute">Inquadra il QR mostrato dalla postazione…</span>';
-    } catch (e) { fermaCam(); es.innerHTML = '<span style="color:var(--ko)">Fotocamera non accessibile (' + esc(e.name || 'errore') + '). Usa «Scatta o scegli una foto del QR».</span>'; }
+    } catch (e) { fermaCam(); es.innerHTML = '<span style="color:var(--ko)">Fotocamera non accessibile (' + esc(e.name || 'errore') + '). Se sei nell\'app Android, concedi il permesso Fotocamera dalle impostazioni dell\'app, oppure usa «Scatta una foto del QR».</span>'; }
   };
-  $('#cam-foto').onchange = async e => {
+  const leggiFoto = async e => {
     const f = e.target.files[0]; e.target.value = ''; if (!f) return;
     if (!window.ZXing) { es.innerHTML = '<span style="color:var(--ko)">Lettore QR non disponibile.</span>'; return; }
     es.innerHTML = '<span class="mute">Leggo la foto…</span>';
@@ -694,6 +698,7 @@ function vImporta() {
       mostra(importaTesto(trovato));
     } catch (x) { es.innerHTML = '<span style="color:var(--ko)">Impossibile leggere la foto.</span>'; }
   };
+  $('#cam-foto').onchange = leggiFoto; $('#cam-foto2').onchange = leggiFoto;
   $('#cam-txt').onclick = () => { const t = prompt('Incolla qui il testo del QR:'); if (t) mostra(importaTesto(t)); };
 }
 

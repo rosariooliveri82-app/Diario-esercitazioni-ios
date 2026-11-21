@@ -1,0 +1,21 @@
+LETTURA QR CON LA FOTOCAMERA NELL'APP ANDROID (Diario v1.3.3)
+
+Serve una sola modifica al file di costruzione dell'APK su GitHub.
+
+1) Apri il tuo repository GitHub (quello dell'APK) dal browser (anche dal telefono, in modalita' "sito desktop").
+2) Vai nella cartella ".github" > "workflows" e apri il file "android.yml".
+3) Premi la matita (Edit this file).
+4) Trova queste due righe:
+
+      - run: npx cap add android
+
+5) Subito DOPO quella riga (stesso rientro: 6 spazi prima del trattino) incolla questo blocco:
+
+      - name: Permesso fotocamera
+        run: |
+          sed -i 's#<application#<uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <application#' android/app/src/main/AndroidManifest.xml
+
+6) Premi "Commit changes". Poi carica anche i 3 file nuovi (app.js, index.html, sw.js) e attendi la costruzione dell'APK (Actions).
+7) Installa il nuovo APK sopra il vecchio. Al primo uso Android chiede "Consentire a Diario di scattare foto e registrare video?": tocca "Solo mentre usi l'app".
+
+Se l'esito e' diverso, il pulsante "Scatta una foto del QR" funziona comunque senza permessi.
