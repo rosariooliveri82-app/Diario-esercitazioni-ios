@@ -660,29 +660,66 @@ function vImporta() {
     <div id="cam-es" style="margin-top:12px"></div></div>
     <div id="cam-ris"></div>`;
   const es = $('#cam-es');
-  const mostra = r => { es.innerHTML = `<b style="color:${r.ok ? 'var(--ok)' : 'var(--ko)'}">${esc(r.msg)}</b>`; if (r.ok && r.fine) { risultati(); } };
+  const mostra = r => {
+    if (r.ok && r.fine) {
+      fermaCam(); risultati();
+      const f = IMP.fatti[IMP.fatti.length - 1];
+      es.innerHTML = '<div style="text-align:center;padding:10px 4px"><div style="font-size:42px">✅</div><b style="color:var(--ok);font-size:18px">Importazione riuscita</b><div class="mute" style="margin:6px 0 10px">' + esc(f.nome) + ': ' + f.n + ' registrazioni ' + (f.nuova ? 'importate' : 'aggiornate') + '.</div><button class="b" id="cam-altro" style="background:var(--sand);color:var(--ink)">Leggi un altro QR</button></div>';
+      $('#cam-altro').onclick = () => { es.innerHTML = ''; if ($('#cam-go')) $('#cam-go').click(); };
+      return;
+    }
+    es.innerHTML = `<b style="color:${r.ok ? 'var(--ok)' : 'var(--ko)'}">${esc(r.msg)}</b>`;
+  };
   const risultati = () => { $('#cam-ris').innerHTML = `<div class="card"><h2>Attività importate</h2>` + IMP.fatti.map(f => `<div class="row" style="flex-wrap:nowrap;margin-bottom:6px"><div><b>${esc(f.nome)}</b><div class="mute">${f.n} registrazioni ${f.nuova ? '(attività creata)' : '(aggiornata)'}</div></div><a href="#/a/${f.id}" style="flex:none">Apri</a></div>`).join('') + `</div>`; };
   const fermaCam = () => { if (camStop) { camStop(); camStop = null; } const cb = $('#cam-box'); if (cb) cb.style.display = 'none'; };
   window.addEventListener('hashchange', fermaCam, { once: true });
-  $('#cam-fotob').onclick = () => $('#cam-foto').click();
-  $('#cam-gal').onclick = () => $('#cam-foto2').click();
+  const plugCam = () => nativa && window.Capacitor.Plugins && window.Capacitor.Plugins.Camera;
+  const daPlugin = async (src, alt) => {
+    try { const r = await plugCam().getPhoto({ quality: 90, source: src, resultType: 'dataUrl', correctOrientation: true, saveToGallery: false }); await leggiUrl(r.dataUrl); }
+    catch (e) { const m = String((e && e.message) || e); if (/cancel/i.test(m)) return; es.innerHTML = '<span style="color:var(--ko)">Fotocamera non disponibile (' + esc(m) + ').</span>'; alt.click(); }
+  };
+  $('#cam-fotob').onclick = () => plugCam() ? daPlugin('CAMERA', $('#cam-foto')) : $('#cam-foto').click();
+  $('#cam-gal').onclick = () => plugCam() ? daPlugin('PHOTOS', $('#cam-foto2')) : $('#cam-foto2').click();
   if ($('#cam-go')) $('#cam-go').onclick = async () => {
     if (camStop) { fermaCam(); return; }
     if (!window.ZXing || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { es.innerHTML = '<span style="color:var(--ko)">La fotocamera non è disponibile qui: usa «Scatta una foto del QR».</span>'; return; }
     try {
       $('#cam-box').style.display = 'block';
-      const rd = new ZXing.BrowserQRCodeReader(); let ultimo = '';
-      const ctl = await rd.decodeFromVideoDevice(undefined, 'cam', (res) => { if (!res) return; const t = res.getText(); if (t === ultimo) return; ultimo = t; mostra(importaTesto(t)); });
-      camStop = () => { try { ctl.stop(); } catch (e) {} };
-      es.innerHTML = '<span class="mute">Inquadra il QR mostrato dalla postazione…</span>';
-    } catch (e) { fermaCam(); es.innerHTML = '<span style="color:var(--ko)">Fotocamera non accessibile (' + esc(e.name || 'errore') + '). Se sei nell\'app Android, concedi il permesso Fotocamera dalle impostazioni dell\'app, oppure usa «Scatta una foto del QR».</span>'; }
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      const v = $('#cam'); v.srcObject = stream; v.setAttribute('playsinline', ''); v.muted = true; await v.play();
+      let vivo = true, ultimo = '', prove = 0;
+      const det = window.BarcodeDetector ? new window.BarcodeDetector({ formats: ['qr_code'] }) : null;
+      const c = document.createElement('canvas'), cx = c.getContext('2d', { willReadFrequently: true });
+      const hints = new Map([[ZXing.DecodeHintType.TRY_HARDER, true], [ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]]]);
+      const rd = new ZXing.MultiFormatReader(); rd.setHints(hints);
+      camStop = () => { vivo = false; try { stream.getTracks().forEach(t => t.stop()); } catch (e) {} v.srcObject = null; };
+      es.innerHTML = '<span class="mute" id="cam-st">Inquadra il QR mostrato dalla postazione…</span>';
+      const giro = async () => {
+        if (!vivo) return;
+        let testo = null;
+        try {
+          if (v.videoWidth) {
+            prove++; const st = $('#cam-st'); if (st) st.textContent = 'Lettura in corso… (' + prove + ')';
+            if (det) { const r = await det.detect(v); if (r && r.length) testo = r[0].rawValue; }
+            if (!testo) {
+              const sc = Math.min(1, 1280 / v.videoWidth); c.width = Math.round(v.videoWidth * sc); c.height = Math.round(v.videoHeight * sc);
+              cx.drawImage(v, 0, 0, c.width, c.height);
+              try { testo = rd.decode(new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(new ZXing.HTMLCanvasElementLuminanceSource(c)))).getText(); } catch (x) { /* nessun QR in questo fotogramma */ }
+            }
+          }
+        } catch (x) { /* ignora e riprova */ }
+        if (testo && testo !== ultimo) { ultimo = testo; mostra(importaTesto(testo)); }
+        if (vivo) setTimeout(giro, 150);
+      };
+      giro();
+    } catch (e) { fermaCam(); es.innerHTML = '<span style="color:var(--ko)">Fotocamera non accessibile (' + esc(e.name || 'errore') + '). Usa «Scatta una foto del QR».</span>'; }
   };
-  const leggiFoto = async e => {
-    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const leggiFoto = async e => { const f = e.target.files[0]; e.target.value = ''; if (f) await leggiUrl(URL.createObjectURL(f)); };
+  const leggiUrl = async url => {
     if (!window.ZXing) { es.innerHTML = '<span style="color:var(--ko)">Lettore QR non disponibile.</span>'; return; }
     es.innerHTML = '<span class="mute">Leggo la foto…</span>';
     try {
-      const url = URL.createObjectURL(f); const img = new Image(); await new Promise((ok, ko) => { img.onload = ok; img.onerror = () => ko(new Error('foto')); img.src = url; });
+      const img = new Image(); await new Promise((ok, ko) => { img.onload = ok; img.onerror = () => ko(new Error('foto')); img.src = url; });
       let trovato = null;
       for (const mx of [1600, 1000, 2400]) {
         const sc = Math.min(1, mx / Math.max(img.naturalWidth, img.naturalHeight)); const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
